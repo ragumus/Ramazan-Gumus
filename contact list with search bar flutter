@@ -1,0 +1,242 @@
+import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:sunitohumlamam/constants/firebase_constants.dart';
+
+class RehberdenMusteriEkle extends StatefulWidget {
+  const RehberdenMusteriEkle();
+
+  @override
+  State<RehberdenMusteriEkle> createState() => _RehberdenMusteriEkleState();
+}
+
+class _RehberdenMusteriEkleState extends State<RehberdenMusteriEkle> {
+  final List<Contact> _contacts = [];
+  List<Contact> contactsChanged = [];
+  bool _isLoading = false;
+  bool isSearching = false;
+  TextEditingController searchController = TextEditingController();
+  String? num;
+
+  @override
+  void initState() {
+    _fetchContacts();
+    searchController.addListener(changeContacts);
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    print("aramaText Build : ${searchController.text}");
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Rehberden Müşteri Ekle"),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+                child: Padding(
+              padding: const EdgeInsets.only(left: 18.0, right: 18.0),
+              child: TextField(
+                controller: searchController,
+                decoration: InputDecoration(
+                    hintText: "Kişi Ara",
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: Colors.blue,
+                    ),
+                    border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.blue))),
+              ),
+            )),
+            Expanded(
+              child: _contacts.isEmpty
+                  ? const Center(
+                      child: CircularColorLoader(),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: isSearching == true
+                          ? contactsChanged.length
+                          : _contacts.length,
+                      itemBuilder: (context, index) {
+                        Contact contact = isSearching == true
+                            ? contactsChanged[index]
+                            : _contacts[index];
+
+                        String num = contact.phones.isNotEmpty
+                            ? contact.phones.first.number
+                            : '--- ----';
+
+                        return Card(
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person),
+                            ),
+                            title: Text(
+                              "${contact.displayName}",
+                              textAlign: TextAlign.center,
+                              textScaler: TextScaler.linear(1.5),
+                            ),
+                            subtitle: Text(
+                              contact.phones.isNotEmpty
+                                  ? contact.phones.first.number
+                                  : '--- ----',
+                              textAlign: TextAlign.center,
+                            ),
+                            trailing: SizedBox(
+                              width: 10,
+                            ),
+                            onTap: () {
+                              Get.defaultDialog(
+                                backgroundColor: Colors.amberAccent,
+                                title:
+                                    "${contact.name.first}  ${contact.name.last} \n $num ",
+                                middleText: "Müşterileriz arasına eklenecek",
+                                confirm: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: Text("Evet"),
+                                    onPressed: () async {
+                                      await MusterilerViewModel().musteriEkle(
+                                          musteriAdi: contact.name.first,
+                                          musteriSoyadi: contact.name.last,
+                                          musteriKoy: "abc",
+                                          musteriTc: "000",
+                                          musteriGsm: num,
+                                          musteriEmail:
+                                              auth.currentUser!.email ??
+                                                  "abc@defg.com",
+                                          musteriIsletmeNo: "0000",
+                                          musteriFoto:
+                                              "${_contacts[index].photo}" ??
+                                                  "");
+                                      Get.to(MusterilerPage(),
+                                          transition: Transition.fade);
+                                    }),
+                                cancel: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: Text("Hayır"),
+                                    onPressed: () {
+                                      Get.back();
+                                    }),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  changeContacts() async {
+    final contacts = await FlutterContacts.getContacts(withProperties: true);
+    List<Contact> _contacts = [];
+    _contacts.addAll(contacts);
+    if (searchController.text.isNotEmpty) {
+      _contacts.retainWhere((contact) {
+        String searchTerm = searchController.text.toLowerCase();
+        String contactName = contact.displayName.toLowerCase();
+        bool nameMatches = contactName.contains(searchTerm);
+        if (nameMatches == true) {
+          return true;
+        }
+        if (searchController.text.isEmpty) {
+          return false;
+        } else {
+          return false;
+        }
+      });
+      setState(() {
+        contactsChanged = _contacts;
+        isSearching = true;
+      });
+    }
+  }
+
+  Future<void> _fetchContacts() async {
+    if (_isLoading) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final PermissionStatus permissionStatus =
+          await Permission.contacts.request();
+
+      if (permissionStatus == PermissionStatus.granted) {
+        final contacts =
+            await FlutterContacts.getContacts(withProperties: true);
+        setState(() {
+          _contacts.clear();
+          _contacts.addAll(contacts);
+        });
+      } else {
+        _showPermissionDeniedDialog();
+      }
+    } on Exception catch (e) {
+      _showErrorDialog('Error fetching contacts: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Permission Required'),
+        content: const Text(
+          'Contacts permission is required to fetch contacts. '
+          'Please enable it in settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
